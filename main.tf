@@ -28,6 +28,38 @@ resource "aws_service_discovery_http_namespace" "gearbox-namespace" {
 
 // Ferret Database
 
+resource "aws_vpc" "ferret-vpc" {
+  cidr_block = "10.0.0.0/16"
+}
+
+resource "aws_subnet" "ferret-subnet" {
+  vpc_id     = aws_vpc.ferret-vpc.id
+  cidr_block = "10.0.0.0/16"
+}
+
+resource "aws_security_group_rule" "allow-27017-ingress" {
+  type              = "ingress"
+  from_port         = 27017
+  to_port           = 27017
+  protocol          = "tcp"
+  security_group_id = aws_security_group.allow-27017-ingress-and-egress.id
+  cidr_blocks       = [aws_vpc.ferret-vpc.cidr_block]
+}
+
+resource "aws_security_group_rule" "allow-27017-egress" {
+  type              = "egress"
+  from_port         = 27017
+  to_port           = 27017
+  protocol          = "tcp"
+  security_group_id = aws_security_group.allow-27017-ingress-and-egress.id
+  cidr_blocks       = [aws_vpc.ferret-vpc.cidr_block]
+}
+
+resource "aws_security_group" "allow-27017-ingress-and-egress" {
+  name   = "allow-http"
+  vpc_id = aws_vpc.ferret-vpc.id
+}
+
 resource "aws_efs_file_system" "gearbox-datastore" {
   creation_token = "gearbox-datastore"
   tags = {
@@ -88,15 +120,22 @@ resource "aws_ecs_service" "ferret" {
     enabled   = true
     namespace = aws_service_discovery_http_namespace.gearbox-namespace.arn
     service {
+      client_alias {
+        port = 27017
+      }
       port_name = jsondecode(aws_ecs_task_definition.ferretdb.container_definitions)[0].portMappings[0].name
     }
+  }
+  network_configuration {
+    subnets         = [aws_subnet.ferret-subnet.id]
+    security_groups = [aws_security_group.allow-27017-ingress-and-egress.id]
   }
 }
 
 // Gearbox Servers
 
 resource "aws_vpc" "gearbox-vpc" {
-  cidr_block = "10.0.0.0/16"
+  cidr_block = "172.31.0.0/16"
 }
 
 resource "aws_security_group_rule" "allow-http-ingress" {
@@ -122,9 +161,20 @@ resource "aws_security_group" "allow-http-ingress-and-all-egress" {
   vpc_id = aws_vpc.gearbox-vpc.id
 }
 
-resource "aws_subnet" "gearbox-subnet" {
-  vpc_id                  = aws_vpc.gearbox-vpc.id
-  cidr_block              = "10.0.0.0/16"
+variable "gearbox-subnet-availability-zones" {
+  type    = list(string)
+  default = ["us-east-1a", "us-east-1b", "us-east-1c"]
+}
+
+resource "aws_subnet" "gearbox-subnets" {
+  count             = length(var.gearbox-subnet-availability-zones)
+  vpc_id            = aws_vpc.gearbox-vpc.id
+  cidr_block        = "172.31.${count.index * 16}.0/20"
+  availability_zone = var.gearbox-subnet-availability-zones[count.index]
+}
+
+resource "aws_internet_gateway" "gearbox-internet-gateway" {
+  vpc_id = aws_vpc.gearbox-vpc.id
 }
 
 resource "aws_lb_target_group" "gearbox-instances" {
@@ -178,7 +228,7 @@ resource "aws_ecs_service" "gearbox" {
     namespace = aws_service_discovery_http_namespace.gearbox-namespace.arn
   }
   network_configuration {
-    subnets         = [aws_subnet.gearbox-subnet.id]
+    subnets         = aws_subnet.gearbox-subnets[*].id
     security_groups = [aws_security_group.allow-http-ingress-and-all-egress.id]
   }
 }
@@ -188,13 +238,13 @@ resource "aws_lb" "gearbox-load-balancer" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_vpc.gearbox-vpc.default_security_group_id]
-  subnets            = [aws_subnet.gearbox-subnet.id]
+  subnets            = aws_subnet.gearbox-subnets[*].id
 }
 
 resource "aws_lb_listener" "gearbox-https-listener" {
   load_balancer_arn = aws_lb.gearbox-load-balancer.arn
-  port              = 443
-  protocol          = "HTTPS"
+  port              = 80
+  protocol          = "HTTP"
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.gearbox-instances.arn
