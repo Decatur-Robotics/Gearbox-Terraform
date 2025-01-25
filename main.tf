@@ -99,11 +99,32 @@ resource "aws_vpc" "gearbox-vpc" {
   cidr_block = "10.0.0.0/16"
 }
 
-data "aws_subnets" "gearbox-subnets" {
-  filter {
-    name   = "vpc-id"
-    values = [aws_vpc.gearbox-vpc.id]
-  }
+resource "aws_security_group_rule" "allow-http-ingress" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  security_group_id = aws_security_group.allow-http-ingress-and-all-egress.id
+  cidr_blocks       = [aws_vpc.gearbox-vpc.cidr_block]
+}
+
+resource "aws_security_group_rule" "allow-all-egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "-1"
+  security_group_id = aws_security_group.allow-http-ingress-and-all-egress.id
+  cidr_blocks       = [aws_vpc.gearbox-vpc.cidr_block]
+}
+
+resource "aws_security_group" "allow-http-ingress-and-all-egress" {
+  name   = "allow-http"
+  vpc_id = aws_vpc.gearbox-vpc.id
+}
+
+resource "aws_subnet" "gearbox-subnet" {
+  vpc_id                  = aws_vpc.gearbox-vpc.id
+  cidr_block              = "10.0.0.0/16"
 }
 
 resource "aws_lb_target_group" "gearbox-instances" {
@@ -157,8 +178,8 @@ resource "aws_ecs_service" "gearbox" {
     namespace = aws_service_discovery_http_namespace.gearbox-namespace.arn
   }
   network_configuration {
-    subnets         = data.aws_subnets.gearbox-subnets.ids
-    security_groups = [aws_vpc.gearbox-vpc.default_security_group_id]
+    subnets         = [aws_subnet.gearbox-subnet.id]
+    security_groups = [aws_security_group.allow-http-ingress-and-all-egress.id]
   }
 }
 
@@ -167,7 +188,7 @@ resource "aws_lb" "gearbox-load-balancer" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_vpc.gearbox-vpc.default_security_group_id]
-  subnets            = data.aws_subnets.gearbox-subnets.ids
+  subnets            = [aws_subnet.gearbox-subnet.id]
 }
 
 resource "aws_lb_listener" "gearbox-https-listener" {
