@@ -52,7 +52,7 @@ resource "aws_security_group_rule" "ferret-allow-all-egress" {
   to_port           = 65535
   protocol          = "-1"
   security_group_id = aws_security_group.allow-27017-ingress-and-all-egress.id
-  self              = true
+  cidr_blocks = ["0.0.0.0/0"]
 }
 
 resource "aws_security_group" "allow-27017-ingress-and-all-egress" {
