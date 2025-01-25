@@ -37,26 +37,26 @@ resource "aws_subnet" "ferret-subnet" {
   cidr_block = "10.0.0.0/16"
 }
 
-resource "aws_security_group_rule" "allow-27017-ingress" {
+resource "aws_security_group_rule" "ferret-allow-27017-ingress" {
   type              = "ingress"
   from_port         = 27017
   to_port           = 27017
   protocol          = "tcp"
-  security_group_id = aws_security_group.allow-27017-ingress-and-egress.id
+  security_group_id = aws_security_group.allow-27017-ingress-and-all-egress.id
   cidr_blocks       = [aws_vpc.ferret-vpc.cidr_block]
 }
 
-resource "aws_security_group_rule" "allow-27017-egress" {
+resource "aws_security_group_rule" "ferret-allow-all-egress" {
   type              = "egress"
-  from_port         = 27017
-  to_port           = 27017
-  protocol          = "tcp"
-  security_group_id = aws_security_group.allow-27017-ingress-and-egress.id
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "-1"
+  security_group_id = aws_security_group.allow-27017-ingress-and-all-egress.id
   cidr_blocks       = [aws_vpc.ferret-vpc.cidr_block]
 }
 
-resource "aws_security_group" "allow-27017-ingress-and-egress" {
-  name   = "allow-http"
+resource "aws_security_group" "allow-27017-ingress-and-all-egress" {
+  name   = "allow-27017-ingress-and-all-egress"
   vpc_id = aws_vpc.ferret-vpc.id
 }
 
@@ -74,6 +74,10 @@ resource "aws_ecs_task_definition" "ferretdb" {
   execution_role_arn       = data.aws_iam_role.ecs_task_execution_role.arn
   cpu                      = 256
   memory                   = 512
+  runtime_platform {
+    operating_system_family  = "LINUX"
+    cpu_architecture         = "X86_64"
+  }
   volume {
     name = aws_efs_file_system.gearbox-datastore.creation_token
     efs_volume_configuration {
@@ -128,7 +132,11 @@ resource "aws_ecs_service" "ferret" {
   }
   network_configuration {
     subnets         = [aws_subnet.ferret-subnet.id]
-    security_groups = [aws_security_group.allow-27017-ingress-and-egress.id]
+    security_groups = [aws_security_group.allow-27017-ingress-and-all-egress.id]
+  }
+  deployment_circuit_breaker {
+    enable = true
+    rollback = true
   }
 }
 
@@ -138,7 +146,7 @@ resource "aws_vpc" "gearbox-vpc" {
   cidr_block = "172.31.0.0/16"
 }
 
-resource "aws_security_group_rule" "allow-http-ingress" {
+resource "aws_security_group_rule" "gearbox-allow-http-ingress" {
   type              = "ingress"
   from_port         = 80
   to_port           = 80
@@ -147,7 +155,7 @@ resource "aws_security_group_rule" "allow-http-ingress" {
   cidr_blocks       = [aws_vpc.gearbox-vpc.cidr_block]
 }
 
-resource "aws_security_group_rule" "allow-all-egress" {
+resource "aws_security_group_rule" "gearbox-allow-all-egress" {
   type              = "egress"
   from_port         = 0
   to_port           = 65535
@@ -186,13 +194,22 @@ resource "aws_lb_target_group" "gearbox-instances" {
 
 // Be sure to jsonencode() the container_definitions! If you get an error about "string required," you forgot to do this.
 
+data "aws_iam_role" "s3-access-role" {
+  name = "s3-full-access-role"
+}
+
 resource "aws_ecs_task_definition" "gearbox" {
   requires_compatibilities = ["FARGATE"]
   family                   = "gearbox"
   network_mode             = "awsvpc"
   execution_role_arn       = data.aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn            = data.aws_iam_role.s3-access-role.arn
   cpu                      = 256
   memory                   = 512
+  runtime_platform {
+    operating_system_family  = "LINUX"
+    cpu_architecture         = "X86_64"
+  }
   container_definitions = jsonencode([
     {
       name      = "gearbox"
@@ -209,7 +226,7 @@ resource "aws_ecs_task_definition" "gearbox" {
       ]
       environmentFiles = [
         {
-          value = "arn:aws:s3:::gearbox-test-env/.env"
+          value = "arn:aws:s3:::4026-gearbox-test-envs/.env"
           type  = "s3"
         }
       ]
@@ -230,6 +247,10 @@ resource "aws_ecs_service" "gearbox" {
   network_configuration {
     subnets         = aws_subnet.gearbox-subnets[*].id
     security_groups = [aws_security_group.allow-http-ingress-and-all-egress.id]
+  }
+  deployment_circuit_breaker {
+    enable = true
+    rollback = true
   }
 }
 
