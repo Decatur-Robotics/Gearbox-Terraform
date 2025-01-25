@@ -43,7 +43,7 @@ resource "aws_security_group_rule" "ferret-allow-27017-ingress" {
   to_port           = 27017
   protocol          = "tcp"
   security_group_id = aws_security_group.allow-27017-ingress-and-all-egress.id
-  cidr_blocks       = [aws_vpc.ferret-vpc.cidr_block]
+  cidr_blocks       = [aws_vpc.gearbox-vpc.cidr_block]
 }
 
 resource "aws_security_group_rule" "ferret-allow-all-egress" {
@@ -52,7 +52,7 @@ resource "aws_security_group_rule" "ferret-allow-all-egress" {
   to_port           = 65535
   protocol          = "-1"
   security_group_id = aws_security_group.allow-27017-ingress-and-all-egress.id
-  cidr_blocks       = [aws_vpc.ferret-vpc.cidr_block]
+  self              = true
 }
 
 resource "aws_security_group" "allow-27017-ingress-and-all-egress" {
@@ -75,8 +75,8 @@ resource "aws_ecs_task_definition" "ferretdb" {
   cpu                      = 256
   memory                   = 512
   runtime_platform {
-    operating_system_family  = "LINUX"
-    cpu_architecture         = "X86_64"
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
   }
   volume {
     name = aws_efs_file_system.gearbox-datastore.creation_token
@@ -131,11 +131,12 @@ resource "aws_ecs_service" "ferret" {
     }
   }
   network_configuration {
-    subnets         = [aws_subnet.ferret-subnet.id]
-    security_groups = [aws_security_group.allow-27017-ingress-and-all-egress.id]
+    subnets          = [aws_subnet.ferret-subnet.id]
+    security_groups  = [aws_security_group.allow-27017-ingress-and-all-egress.id]
+    assign_public_ip = true
   }
   deployment_circuit_breaker {
-    enable = true
+    enable   = true
     rollback = true
   }
 }
@@ -152,7 +153,7 @@ resource "aws_security_group_rule" "gearbox-allow-http-ingress" {
   to_port           = 80
   protocol          = "tcp"
   security_group_id = aws_security_group.allow-http-ingress-and-all-egress.id
-  cidr_blocks       = [aws_vpc.gearbox-vpc.cidr_block]
+  cidr_blocks       = ["0.0.0.0/0"]
 }
 
 resource "aws_security_group_rule" "gearbox-allow-all-egress" {
@@ -161,7 +162,7 @@ resource "aws_security_group_rule" "gearbox-allow-all-egress" {
   to_port           = 65535
   protocol          = "-1"
   security_group_id = aws_security_group.allow-http-ingress-and-all-egress.id
-  cidr_blocks       = [aws_vpc.gearbox-vpc.cidr_block]
+  cidr_blocks       = ["0.0.0.0/0"]
 }
 
 resource "aws_security_group" "allow-http-ingress-and-all-egress" {
@@ -207,8 +208,8 @@ resource "aws_ecs_task_definition" "gearbox" {
   cpu                      = 256
   memory                   = 512
   runtime_platform {
-    operating_system_family  = "LINUX"
-    cpu_architecture         = "X86_64"
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
   }
   container_definitions = jsonencode([
     {
@@ -249,7 +250,7 @@ resource "aws_ecs_service" "gearbox" {
     security_groups = [aws_security_group.allow-http-ingress-and-all-egress.id]
   }
   deployment_circuit_breaker {
-    enable = true
+    enable   = true
     rollback = true
   }
 }
