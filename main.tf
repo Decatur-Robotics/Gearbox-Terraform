@@ -29,12 +29,12 @@ resource "aws_service_discovery_http_namespace" "gearbox-namespace" {
 // Ferret Database
 
 resource "aws_vpc" "ferret-vpc" {
-  cidr_block = "172.32.0.0/16"
+  cidr_block = "40.27.0.0/16"
 }
 
 resource "aws_subnet" "ferret-subnet" {
   vpc_id     = aws_vpc.ferret-vpc.id
-  cidr_block = "172.32.0.0/16"
+  cidr_block = "40.27.0.0/16"
 }
 
 resource "aws_security_group_rule" "ferret-allow-27017-ingress" {
@@ -83,6 +83,11 @@ resource "aws_route_table" "ferret-route-table" {
     cidr_block = aws_vpc.ferret-vpc.cidr_block
     gateway_id = "local"
   }
+}
+
+resource "aws_route_table_association" "ferret-route-table-association" {
+  subnet_id      = aws_subnet.ferret-subnet.id
+  route_table_id = aws_route_table.ferret-route-table.id
 }
 
 resource "aws_efs_file_system" "gearbox-datastore" {
@@ -175,7 +180,7 @@ resource "aws_ecs_service" "ferret" {
 // Gearbox Servers
 
 resource "aws_vpc" "gearbox-vpc" {
-  cidr_block = "172.31.0.0/16"
+  cidr_block = "40.26.0.0/16"
 }
 
 resource "aws_security_group_rule" "gearbox-allow-http-ingress" {
@@ -209,12 +214,32 @@ variable "gearbox-subnet-availability-zones" {
 resource "aws_subnet" "gearbox-subnets" {
   count             = length(var.gearbox-subnet-availability-zones)
   vpc_id            = aws_vpc.gearbox-vpc.id
-  cidr_block        = "172.31.${count.index * 16}.0/20"
+  cidr_block        = "40.26.${count.index * 16}.0/20"
   availability_zone = var.gearbox-subnet-availability-zones[count.index]
 }
 
 resource "aws_internet_gateway" "gearbox-internet-gateway" {
   vpc_id = aws_vpc.gearbox-vpc.id
+}
+
+
+
+resource "aws_route_table" "gearbox-route-table" {
+  vpc_id = aws_vpc.gearbox-vpc.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.gearbox-internet-gateway.id
+  }
+  route {
+    cidr_block = aws_vpc.gearbox-vpc.cidr_block
+    gateway_id = "local"
+  }
+}
+
+resource "aws_route_table_association" "gearbox-route-table-association" {
+  count          = length(var.gearbox-subnet-availability-zones)
+  subnet_id      = aws_subnet.gearbox-subnets[count.index].id
+  route_table_id = aws_route_table.gearbox-route-table.id
 }
 
 resource "aws_lb_target_group" "gearbox-instances" {
