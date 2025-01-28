@@ -30,6 +30,7 @@ resource "aws_service_discovery_http_namespace" "gearbox-namespace" {
 
 resource "aws_vpc" "ferret-vpc" {
   cidr_block = "40.27.0.0/16"
+  enable_dns_hostnames = true
 }
 
 resource "aws_subnet" "ferret-subnet" {
@@ -51,6 +52,16 @@ resource "aws_security_group_rule" "ferret-allow-443-ingress" {
   from_port         = 443
   to_port           = 443
   protocol          = "tcp"
+  security_group_id = aws_security_group.ferret-security-group.id
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+// For the EFS mount target
+resource "aws_security_group_rule" "ferret-allow-2049-ingress" {
+  type              = "ingress"
+  from_port         = 2049
+  to_port           = 2049
+  protocol          = "-1"
   security_group_id = aws_security_group.ferret-security-group.id
   cidr_blocks       = ["0.0.0.0/0"]
 }
@@ -90,11 +101,17 @@ resource "aws_route_table_association" "ferret-route-table-association" {
   route_table_id = aws_route_table.ferret-route-table.id
 }
 
-resource "aws_efs_file_system" "gearbox-datastore" {
-  creation_token = "gearbox-datastore"
+resource "aws_efs_file_system" "ferret-datastore" {
+  creation_token = "ferret-datastore"
   tags = {
-    name = "gearbox-datastore"
+    name = "ferret-datastore"
   }
+}
+
+resource "aws_efs_mount_target" "ferret-datastore-mount-target" {
+  file_system_id = aws_efs_file_system.ferret-datastore.id
+  subnet_id      = aws_subnet.ferret-subnet.id
+  security_groups = [aws_security_group.ferret-security-group.id]
 }
 
 resource "aws_ecs_task_definition" "ferretdb" {
@@ -109,9 +126,9 @@ resource "aws_ecs_task_definition" "ferretdb" {
     cpu_architecture        = "X86_64"
   }
   volume {
-    name = aws_efs_file_system.gearbox-datastore.creation_token
+    name = aws_efs_file_system.ferret-datastore.creation_token
     efs_volume_configuration {
-      file_system_id = aws_efs_file_system.gearbox-datastore.id
+      file_system_id = aws_efs_file_system.ferret-datastore.id
     }
   }
   container_definitions = jsonencode([
@@ -141,7 +158,7 @@ resource "aws_ecs_task_definition" "ferretdb" {
       ]
       mountPoints = [
         {
-          sourceVolume  = aws_efs_file_system.gearbox-datastore.creation_token
+          sourceVolume  = aws_efs_file_system.ferret-datastore.creation_token
           containerPath = "/state"
           readOnly      = false
         }
