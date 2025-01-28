@@ -239,8 +239,6 @@ resource "aws_internet_gateway" "gearbox-internet-gateway" {
   vpc_id = aws_vpc.gearbox-vpc.id
 }
 
-
-
 resource "aws_route_table" "gearbox-route-table" {
   vpc_id = aws_vpc.gearbox-vpc.id
   route {
@@ -266,12 +264,11 @@ resource "aws_lb_target_group" "gearbox-instances" {
   vpc_id   = aws_vpc.gearbox-vpc.id
 }
 
-// Be sure to jsonencode() the container_definitions! If you get an error about "string required," you forgot to do this.
-
 data "aws_iam_role" "s3-access-role" {
   name = "s3-full-access-role"
 }
 
+// Be sure to jsonencode() the container_definitions! If you get an error about "string required," you forgot to do this.
 resource "aws_ecs_task_definition" "gearbox" {
   requires_compatibilities = ["FARGATE"]
   family                   = "gearbox"
@@ -321,6 +318,7 @@ resource "aws_ecs_service" "gearbox" {
   network_configuration {
     subnets         = aws_subnet.gearbox-subnets[*].id
     security_groups = [aws_security_group.gearbox-security-group.id]
+    assign_public_ip = true
   }
   deployment_circuit_breaker {
     enable   = true
