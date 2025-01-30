@@ -35,30 +35,19 @@ resource "aws_cloudwatch_log_group" "gearbox-logs" {
   name = "gearbox-logs"
 }
 
-resource "aws_vpc_peering_connection" "gearbox-ferret-peering" {
-  peer_vpc_id = aws_vpc.ferret-vpc.id
-  vpc_id      = aws_vpc.gearbox-vpc.id
-  auto_accept = true
+// Network Config
 
-  accepter {
-    allow_remote_vpc_dns_resolution = true
-  }
-
-  requester {
-    allow_remote_vpc_dns_resolution = true
-  }
+resource "aws_vpc" "gearbox-vpc" {
+  cidr_block = "40.26.0.0/16"
 }
 
-// Ferret Database
-
-resource "aws_vpc" "ferret-vpc" {
-  cidr_block = "40.27.0.0/16"
-  enable_dns_hostnames = true
-}
-
-resource "aws_subnet" "ferret-subnet" {
-  vpc_id     = aws_vpc.ferret-vpc.id
-  cidr_block = "40.27.0.0/16"
+resource "aws_security_group_rule" "gearbox-allow-http-ingress" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  security_group_id = aws_security_group.gearbox-security-group.id
+  cidr_blocks       = ["0.0.0.0/0"]
 }
 
 resource "aws_security_group_rule" "ferret-allow-27017-ingress" {
@@ -66,17 +55,8 @@ resource "aws_security_group_rule" "ferret-allow-27017-ingress" {
   from_port         = 27017
   to_port           = 27017
   protocol          = "tcp"
-  security_group_id = aws_security_group.ferret-security-group.id
+  security_group_id = aws_security_group.gearbox-security-group.id
   cidr_blocks       = [aws_vpc.gearbox-vpc.cidr_block]
-}
-
-resource "aws_security_group_rule" "ferret-allow-443-ingress" {
-  type              = "ingress"
-  from_port         = 443
-  to_port           = 443
-  protocol          = "tcp"
-  security_group_id = aws_security_group.ferret-security-group.id
-  cidr_blocks       = ["0.0.0.0/0"]
 }
 
 // For the EFS mount target
@@ -85,43 +65,29 @@ resource "aws_security_group_rule" "ferret-allow-2049-ingress" {
   from_port         = 2049
   to_port           = 2049
   protocol          = "-1"
-  security_group_id = aws_security_group.ferret-security-group.id
+  security_group_id = aws_security_group.gearbox-security-group.id
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-resource "aws_security_group_rule" "ferret-allow-all-egress" {
+resource "aws_security_group_rule" "gearbox-allow-all-egress" {
   type              = "egress"
   from_port         = 0
   to_port           = 65535
   protocol          = "-1"
-  security_group_id = aws_security_group.ferret-security-group.id
-  cidr_blocks = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.gearbox-security-group.id
+  cidr_blocks       = ["0.0.0.0/0"]
 }
 
-resource "aws_security_group" "ferret-security-group" {
-  name   = "ferret-security-group"
-  vpc_id = aws_vpc.ferret-vpc.id
+resource "aws_security_group" "gearbox-security-group" {
+  name   = "gearbox-security-group"
+  vpc_id = aws_vpc.gearbox-vpc.id
 }
 
-resource "aws_internet_gateway" "ferret-internet-gateway" {
-  vpc_id = aws_vpc.ferret-vpc.id
-}
+// Ferret Database
 
-resource "aws_route_table" "ferret-route-table" {
-  vpc_id = aws_vpc.ferret-vpc.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.ferret-internet-gateway.id
-  }
-  route {
-    cidr_block = aws_vpc.ferret-vpc.cidr_block
-    gateway_id = "local"
-  }
-}
-
-resource "aws_route_table_association" "ferret-route-table-association" {
-  subnet_id      = aws_subnet.ferret-subnet.id
-  route_table_id = aws_route_table.ferret-route-table.id
+resource "aws_subnet" "ferret-subnet" {
+  vpc_id     = aws_vpc.gearbox-vpc.id
+  cidr_block = "40.27.0.0/16"
 }
 
 resource "aws_efs_file_system" "ferret-datastore" {
@@ -132,13 +98,13 @@ resource "aws_efs_file_system" "ferret-datastore" {
 }
 
 resource "aws_efs_mount_target" "ferret-datastore-mount-target" {
-  file_system_id = aws_efs_file_system.ferret-datastore.id
-  subnet_id      = aws_subnet.ferret-subnet.id
-  security_groups = [aws_security_group.ferret-security-group.id]
+  file_system_id  = aws_efs_file_system.ferret-datastore.id
+  subnet_id       = aws_subnet.ferret-subnet.id
+  security_groups = [aws_security_group.gearbox-security-group.id]
 }
 
 resource "aws_cloudwatch_log_stream" "ferret-log-stream" {
-  name          = "ferret-log-stream"
+  name           = "ferret-log-stream"
   log_group_name = aws_cloudwatch_log_group.gearbox-logs.name
 }
 
@@ -170,12 +136,6 @@ resource "aws_ecs_task_definition" "ferretdb" {
           containerPort = 27017
           hostPort      = 27017
           protocol      = "tcp"
-        },
-        {
-          name = "https"
-          containerPort = 443
-          hostPort = 443
-          protocol = "tcp"
         }
       ]
       environment = [
@@ -221,7 +181,7 @@ resource "aws_ecs_service" "ferret" {
   }
   network_configuration {
     subnets          = [aws_subnet.ferret-subnet.id]
-    security_groups  = [aws_security_group.ferret-security-group.id]
+    security_groups  = [aws_security_group.gearbox-security-group.id]
     assign_public_ip = true
   }
   deployment_circuit_breaker {
@@ -231,33 +191,6 @@ resource "aws_ecs_service" "ferret" {
 }
 
 // Gearbox Servers
-
-resource "aws_vpc" "gearbox-vpc" {
-  cidr_block = "40.26.0.0/16"
-}
-
-resource "aws_security_group_rule" "gearbox-allow-http-ingress" {
-  type              = "ingress"
-  from_port         = 80
-  to_port           = 80
-  protocol          = "tcp"
-  security_group_id = aws_security_group.gearbox-security-group.id
-  cidr_blocks       = ["0.0.0.0/0"]
-}
-
-resource "aws_security_group_rule" "gearbox-allow-all-egress" {
-  type              = "egress"
-  from_port         = 0
-  to_port           = 65535
-  protocol          = "-1"
-  security_group_id = aws_security_group.gearbox-security-group.id
-  cidr_blocks       = ["0.0.0.0/0"]
-}
-
-resource "aws_security_group" "gearbox-security-group" {
-  name   = "gearbox-security-group"
-  vpc_id = aws_vpc.gearbox-vpc.id
-}
 
 variable "gearbox-subnet-availability-zones" {
   type    = list(string)
@@ -305,7 +238,7 @@ data "aws_iam_role" "s3-access-role" {
 }
 
 resource "aws_cloudwatch_log_stream" "gearbox-log-stream" {
-  name          = "gearbox-log-stream"
+  name           = "gearbox-log-stream"
   log_group_name = aws_cloudwatch_log_group.gearbox-logs.name
 }
 
@@ -365,8 +298,8 @@ resource "aws_ecs_service" "gearbox" {
     namespace = aws_service_discovery_http_namespace.gearbox-namespace.arn
   }
   network_configuration {
-    subnets         = aws_subnet.gearbox-subnets[*].id
-    security_groups = [aws_security_group.gearbox-security-group.id]
+    subnets          = aws_subnet.gearbox-subnets[*].id
+    security_groups  = [aws_security_group.gearbox-security-group.id]
     assign_public_ip = true
   }
   deployment_circuit_breaker {
