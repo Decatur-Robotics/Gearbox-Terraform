@@ -9,8 +9,13 @@ terraform {
   required_version = ">= 1.10.0"
 }
 
+variable "region" {
+  type    = string
+  default = "us-east-1"
+}
+
 provider "aws" {
-  region = "us-east-1"
+  region = var.region
 }
 
 data "aws_iam_role" "ecs_task_execution_role" {
@@ -22,8 +27,26 @@ resource "aws_ecs_cluster" "gearbox" {
 }
 
 resource "aws_service_discovery_http_namespace" "gearbox-namespace" {
-  name        = "gearbox-namespace"
+  name        = "gearbox"
   description = "The namespace to use for Service Connect"
+}
+
+resource "aws_cloudwatch_log_group" "gearbox-logs" {
+  name = "gearbox-logs"
+}
+
+resource "aws_vpc_peering_connection" "gearbox-ferret-peering" {
+  peer_vpc_id = aws_vpc.ferret-vpc.id
+  vpc_id      = aws_vpc.gearbox-vpc.id
+  auto_accept = true
+
+  accepter {
+    allow_remote_vpc_dns_resolution = true
+  }
+
+  requester {
+    allow_remote_vpc_dns_resolution = true
+  }
 }
 
 // Ferret Database
@@ -114,6 +137,11 @@ resource "aws_efs_mount_target" "ferret-datastore-mount-target" {
   security_groups = [aws_security_group.ferret-security-group.id]
 }
 
+resource "aws_cloudwatch_log_stream" "ferret-log-stream" {
+  name          = "ferret-log-stream"
+  log_group_name = aws_cloudwatch_log_group.gearbox-logs.name
+}
+
 resource "aws_ecs_task_definition" "ferretdb" {
   requires_compatibilities = ["FARGATE"]
   family                   = "ferretdb"
@@ -163,6 +191,14 @@ resource "aws_ecs_task_definition" "ferretdb" {
           readOnly      = false
         }
       ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.gearbox-logs.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = aws_cloudwatch_log_stream.ferret-log-stream.name
+        }
+      }
     }
   ])
 }
@@ -268,6 +304,11 @@ data "aws_iam_role" "s3-access-role" {
   name = "s3-full-access-role"
 }
 
+resource "aws_cloudwatch_log_stream" "gearbox-log-stream" {
+  name          = "gearbox-log-stream"
+  log_group_name = aws_cloudwatch_log_group.gearbox-logs.name
+}
+
 // Be sure to jsonencode() the container_definitions! If you get an error about "string required," you forgot to do this.
 resource "aws_ecs_task_definition" "gearbox" {
   requires_compatibilities = ["FARGATE"]
@@ -301,6 +342,14 @@ resource "aws_ecs_task_definition" "gearbox" {
           type  = "s3"
         }
       ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.gearbox-logs.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = aws_cloudwatch_log_stream.gearbox-log-stream.name
+        }
+      }
     }
   ])
 }
