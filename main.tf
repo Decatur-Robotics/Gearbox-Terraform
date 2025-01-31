@@ -39,6 +39,7 @@ resource "aws_cloudwatch_log_group" "gearbox-logs" {
 
 resource "aws_vpc" "gearbox-vpc" {
   cidr_block = "40.26.0.0/16"
+  enable_dns_hostnames = true // Necessary to avoid "cannot resolve" errors with EFS
 }
 
 resource "aws_security_group_rule" "gearbox-allow-http-ingress" {
@@ -50,7 +51,7 @@ resource "aws_security_group_rule" "gearbox-allow-http-ingress" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-resource "aws_security_group_rule" "ferret-allow-27017-ingress" {
+resource "aws_security_group_rule" "ferret-allow-mongo-ingress" {
   type              = "ingress"
   from_port         = 27017
   to_port           = 27017
@@ -60,7 +61,7 @@ resource "aws_security_group_rule" "ferret-allow-27017-ingress" {
 }
 
 // For the EFS mount target
-resource "aws_security_group_rule" "ferret-allow-2049-ingress" {
+resource "aws_security_group_rule" "ferret-allow-efs-ingress" {
   type              = "ingress"
   from_port         = 2049
   to_port           = 2049
@@ -85,11 +86,6 @@ resource "aws_security_group" "gearbox-security-group" {
 
 // Ferret Database
 
-resource "aws_subnet" "ferret-subnet" {
-  vpc_id     = aws_vpc.gearbox-vpc.id
-  cidr_block = "40.27.0.0/16"
-}
-
 resource "aws_efs_file_system" "ferret-datastore" {
   creation_token = "ferret-datastore"
   tags = {
@@ -99,7 +95,7 @@ resource "aws_efs_file_system" "ferret-datastore" {
 
 resource "aws_efs_mount_target" "ferret-datastore-mount-target" {
   file_system_id  = aws_efs_file_system.ferret-datastore.id
-  subnet_id       = aws_subnet.ferret-subnet.id
+  subnet_id       = aws_subnet.gearbox-subnets[0].id
   security_groups = [aws_security_group.gearbox-security-group.id]
 }
 
@@ -180,7 +176,7 @@ resource "aws_ecs_service" "ferret" {
     }
   }
   network_configuration {
-    subnets          = [aws_subnet.ferret-subnet.id]
+    subnets          = [aws_subnet.gearbox-subnets[0].id]
     security_groups  = [aws_security_group.gearbox-security-group.id]
     assign_public_ip = true
   }
@@ -200,7 +196,7 @@ variable "gearbox-subnet-availability-zones" {
 resource "aws_subnet" "gearbox-subnets" {
   count             = length(var.gearbox-subnet-availability-zones)
   vpc_id            = aws_vpc.gearbox-vpc.id
-  cidr_block        = "40.26.${count.index * 16}.0/20"
+  cidr_block        = "40.26.${(count.index + 1) * 16}.0/20"
   availability_zone = var.gearbox-subnet-availability-zones[count.index]
 }
 
