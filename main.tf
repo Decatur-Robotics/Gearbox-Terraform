@@ -309,7 +309,7 @@ resource "aws_ecs_service" "gearbox" {
 resource "aws_appautoscaling_target" "ecs_target" {
   max_capacity       = 5
   min_capacity       = 1
-  resource_id        = aws_ecs_service.gearbox.resource_id
+  resource_id        = aws_ecs_service.gearbox.id
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
@@ -323,8 +323,8 @@ resource "aws_appautoscaling_policy" "ecs_policy" {
 
   target_tracking_scaling_policy_configuration {
     target_value = 75
-    scale_in_cooldown = 30
-    scale_out_cooldown = 30
+    scale_in_cooldown = 300
+    scale_out_cooldown = 300
     predefined_metric_specification {
       predefined_metric_type = "ECSServiceAverageCPUUtilization"
     }
