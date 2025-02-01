@@ -120,8 +120,8 @@ resource "aws_ecs_task_definition" "ferretdb" {
   family                   = "ferretdb"
   network_mode             = "awsvpc"
   execution_role_arn       = data.aws_iam_role.ecs_task_execution_role.arn
-  cpu                      = 256
-  memory                   = 512
+  cpu                      = 512
+  memory                   = 1024
   runtime_platform {
     operating_system_family = "LINUX"
     cpu_architecture        = "X86_64"
@@ -253,8 +253,8 @@ resource "aws_ecs_task_definition" "gearbox" {
   network_mode             = "awsvpc"
   execution_role_arn       = data.aws_iam_role.ecs_task_execution_role.arn
   task_role_arn            = data.aws_iam_role.s3-access-role.arn
-  cpu                      = 256
-  memory                   = 512
+  cpu                      = 512
+  memory                   = 1024
   runtime_platform {
     operating_system_family = "LINUX"
     cpu_architecture        = "X86_64"
@@ -371,6 +371,9 @@ resource "aws_lb_target_group" "gearbox-instances" {
   protocol    = "HTTP"
   vpc_id      = aws_vpc.gearbox-vpc.id
   target_type = "ip"
+  health_check {
+    path = "/api/hello"
+  }
 }
 
 resource "aws_lb" "gearbox-load-balancer" {
@@ -442,11 +445,6 @@ resource "cloudflare_dns_record" "www-cname" {
   type    = "CNAME"
   ttl     = 1
   proxied = true 
-}
-
-variable "old-server-ip" {
-  type = string
-  default = "35.170.147.2"
 }
 
 resource "cloudflare_dns_record" "status-cname" {
