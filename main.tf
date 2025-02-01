@@ -309,7 +309,7 @@ resource "aws_ecs_service" "gearbox" {
 resource "aws_appautoscaling_target" "ecs_target" {
   max_capacity       = 5
   min_capacity       = 1
-  resource_id        = "service/clusterName/serviceName"
+  resource_id        = aws_ecs_service.gearbox.resource_id
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
