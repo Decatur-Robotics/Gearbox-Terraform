@@ -313,7 +313,7 @@ resource "aws_ecs_service" "gearbox" {
 resource "aws_appautoscaling_target" "ecs_target" {
   max_capacity       = 5
   min_capacity       = 1
-  resource_id        = aws_ecs_service.gearbox.id
+  resource_id        = "service/${aws_ecs_cluster.gearbox.name}/${aws_ecs_service.gearbox.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
@@ -333,10 +333,6 @@ resource "aws_appautoscaling_policy" "ecs_policy" {
       predefined_metric_type = "ECSServiceAverageCPUUtilization"
     }
   }
-}
-
-data "aws_acm_certificate" "gearbox-certificate" {
-  domain = "*.4026.org"
 }
 
 resource "aws_security_group" "load-balancer-security-group" {
@@ -382,19 +378,14 @@ resource "aws_lb_listener" "gearbox-https-listener" {
   load_balancer_arn = aws_lb.gearbox-load-balancer.arn
   port              = 443
   protocol          = "HTTPS"
-  certificate_arn   = data.aws_acm_certificate.gearbox-certificate.arn
+  certificate_arn   = aws_acm_certificate_validation.gearbox-certificate-validation.certificate_arn
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.gearbox-instances.arn
   }
 }
 
-// Cloudflare
-
-# provider "cloudflare" {
-#   email   = "gearbox@decaturrobotics.org"
-#   api_token = 
-# }
+// DNS
 
 variable "cloudflare-zone-id" {
   type = string
@@ -412,4 +403,25 @@ resource "cloudflare_dns_record" "dns-record" {
   type    = "CNAME"
   ttl     = 1
   proxied = true
+}
+
+resource "cloudflare_dns_record" "domain-ownership-validation-record" {
+  zone_id = var.cloudflare-zone-id
+  name    = tolist(aws_acm_certificate.gearbox-certificate.domain_validation_options)[0].resource_record_name
+  content = tolist(aws_acm_certificate.gearbox-certificate.domain_validation_options)[0].resource_record_value
+  type    = tolist(aws_acm_certificate.gearbox-certificate.domain_validation_options)[0].resource_record_type
+  comment = "ACM Certificate Validation"
+  ttl     = 60
+}
+
+resource "aws_acm_certificate" "gearbox-certificate" {
+  domain_name       = "*.4026.org"
+  validation_method = "DNS"
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_acm_certificate_validation" "gearbox-certificate-validation" {
+  certificate_arn = aws_acm_certificate.gearbox-certificate.arn
 }
