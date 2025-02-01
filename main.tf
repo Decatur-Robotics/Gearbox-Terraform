@@ -97,6 +97,13 @@ resource "aws_efs_file_system" "ferret-datastore" {
   }
 }
 
+resource "aws_efs_backup_policy" "ferret-datastore-backup-policy" {
+  file_system_id = aws_efs_file_system.ferret-datastore.id
+  backup_policy {
+    status = "ENABLED"
+  }
+}
+
 resource "aws_efs_mount_target" "ferret-datastore-mount-target" {
   file_system_id  = aws_efs_file_system.ferret-datastore.id
   subnet_id       = aws_subnet.gearbox-subnets[0].id
@@ -413,6 +420,8 @@ resource "aws_acm_certificate" "gearbox-certificate" {
   }
 }
 
+// Reference this instead of the aws_acm_certificate resource, 
+// so that we can wait for the certificate to be issued before creating the DNS records
 resource "aws_acm_certificate_validation" "gearbox-certificate-validation" {
   certificate_arn = aws_acm_certificate.gearbox-certificate.arn
 }
