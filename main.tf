@@ -417,13 +417,22 @@ resource "aws_acm_certificate_validation" "gearbox-certificate-validation" {
   certificate_arn = aws_acm_certificate.gearbox-certificate.arn
 }
 
-resource "cloudflare_dns_record" "testing" {
+resource "cloudflare_dns_record" "testing-cname" {
   zone_id = var.cloudflare-zone-id
   name    = "testing"
   content = aws_lb.gearbox-load-balancer.dns_name
   type    = "CNAME"
   ttl     = 1
   proxied = true
+}
+
+resource "cloudflare_dns_record" "www-cname" {
+  zone_id = var.cloudflare-zone-id
+  name    = "www"
+  content = aws_lb.gearbox-load-balancer.dns_name
+  type    = "CNAME"
+  ttl     = 1
+  proxied = true 
 }
 
 variable "old-server-ip" {
