@@ -38,7 +38,7 @@ resource "aws_cloudwatch_log_group" "gearbox-logs" {
 // Network Config
 
 resource "aws_vpc" "gearbox-vpc" {
-  cidr_block = "40.26.0.0/16"
+  cidr_block           = "40.26.0.0/16"
   enable_dns_hostnames = true // Necessary to avoid "cannot resolve" errors with EFS
 }
 
@@ -124,7 +124,7 @@ resource "aws_ecs_task_definition" "ferretdb" {
   container_definitions = jsonencode([
     {
       name      = "ferretdb"
-      image     = "ghcr.io/ferretdb/ferretdb-dev:1.24.0"
+      image     = "ghcr.io/ferretdb/ferretdb-dev:1.24.0" // Later versions give authentication errors
       essential = true
       portMappings = [
         {
@@ -301,29 +301,59 @@ resource "aws_ecs_service" "gearbox" {
   }
   load_balancer {
     target_group_arn = aws_lb_target_group.gearbox-instances.arn
-    container_name = jsondecode(aws_ecs_task_definition.gearbox.container_definitions)[0].name
-    container_port = 80
+    container_name   = jsondecode(aws_ecs_task_definition.gearbox.container_definitions)[0].name
+    container_port   = 80
   }
 }
 
-resource "aws_lb_target_group" "gearbox-instances" {
-  name     = "gearbox-instances"
-  port     = 80
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.gearbox-vpc.id
+data "aws_acm_certificate" "gearbox-certificate" {
+  domain = "*.4026.org"
 }
+
+resource "aws_security_group" "load-balancer-security-group" {
+  name   = "load-balancer-security-group"
+  vpc_id = aws_vpc.gearbox-vpc.id
+}
+
+resource "aws_security_group_rule" "load-balancer-allow-https-ingress" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  security_group_id = aws_security_group.load-balancer-security-group.id
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "load-balancer-allow-all-egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 65535
+  protocol          = "-1"
+  security_group_id = aws_security_group.load-balancer-security-group.id
+  cidr_blocks       = [aws_vpc.gearbox-vpc.cidr_block]
+}
+
+resource "aws_lb_target_group" "gearbox-instances" {
+  name        = "gearbox-instances"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.gearbox-vpc.id
+  target_type = "ip"
+}
+
 resource "aws_lb" "gearbox-load-balancer" {
   name               = "gearbox"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_vpc.gearbox-vpc.default_security_group_id]
+  security_groups    = [aws_security_group.load-balancer-security-group.id]
   subnets            = aws_subnet.gearbox-subnets[*].id
 }
 
 resource "aws_lb_listener" "gearbox-https-listener" {
   load_balancer_arn = aws_lb.gearbox-load-balancer.arn
-  port              = 80
-  protocol          = "HTTP"
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = data.aws_acm_certificate.gearbox-certificate.arn
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.gearbox-instances.arn
