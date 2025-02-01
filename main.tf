@@ -394,15 +394,6 @@ variable "cloudflare-zone-id" {
 
 data "cloudflare_zone" "dns-zone" {
   zone_id = var.cloudflare-zone-id
-} 
-
-resource "cloudflare_dns_record" "dns-record" {
-  zone_id = var.cloudflare-zone-id
-  name    = "testing"
-  content = aws_lb.gearbox-load-balancer.dns_name
-  type    = "CNAME"
-  ttl     = 1
-  proxied = true
 }
 
 resource "cloudflare_dns_record" "domain-ownership-validation-record" {
@@ -410,8 +401,8 @@ resource "cloudflare_dns_record" "domain-ownership-validation-record" {
   name    = tolist(aws_acm_certificate.gearbox-certificate.domain_validation_options)[0].resource_record_name
   content = tolist(aws_acm_certificate.gearbox-certificate.domain_validation_options)[0].resource_record_value
   type    = tolist(aws_acm_certificate.gearbox-certificate.domain_validation_options)[0].resource_record_type
-  comment = "ACM Certificate Validation"
   ttl     = 60
+  comment = "ACM Certificate Validation"
 }
 
 resource "aws_acm_certificate" "gearbox-certificate" {
@@ -424,4 +415,64 @@ resource "aws_acm_certificate" "gearbox-certificate" {
 
 resource "aws_acm_certificate_validation" "gearbox-certificate-validation" {
   certificate_arn = aws_acm_certificate.gearbox-certificate.arn
+}
+
+resource "cloudflare_dns_record" "testing" {
+  zone_id = var.cloudflare-zone-id
+  name    = "testing"
+  content = aws_lb.gearbox-load-balancer.dns_name
+  type    = "CNAME"
+  ttl     = 1
+  proxied = true
+}
+
+variable "old-server-ip" {
+  type = string
+  default = "35.170.147.2"
+}
+
+resource "cloudflare_dns_record" "status-cname" {
+  zone_id = var.cloudflare-zone-id
+  name    = "status"
+  content = aws_lb.gearbox-load-balancer.dns_name
+  type    = "CNAME"
+  ttl     = 1
+}
+
+resource "cloudflare_dns_record" "send-mx" {
+  zone_id = var.cloudflare-zone-id
+  name    = "send"
+  content = "feedback-smtp.us-east-1.amazonses.com"
+  type    = "MX"
+  ttl = 1
+  comment = "Resend"
+  priority = 1 // Required for MX records
+}
+
+resource "cloudflare_dns_record" "root-send-txt" {
+  zone_id = var.cloudflare-zone-id
+  name    = "send"
+  content = "v=spf1 include:_spf.mx.cloudflare.net ~all"
+  type    = "TXT"
+  ttl = 1
+  comment = "Resend"
+}
+
+resource "cloudflare_dns_record" "resend-domain-key-txt" {
+  zone_id = var.cloudflare-zone-id
+  name    = "resend._domainkey"
+  content = "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDof5w1H6DaIgsH2qxCLQWqE4QPayoA+5SL/Z8/s8Gfwq8N4Q/U9Wu9VPRoEWzh+LqM35Ce7GrAxkhsCiFvb/7a0RrHn6okfODWtebB7iz9Zfa9aqk8wcpR1DAhcCf9El4RKUBlBmQ0xaDwCRovcBM6cRcRq5wAbx1sHqVTo4X1HwIDAQAB"
+  type    = "TXT"
+  ttl     = 1
+  comment = "Resend"
+}
+
+
+resource "cloudflare_dns_record" "send-txt" {
+  zone_id = var.cloudflare-zone-id
+  name    = "send"
+  content = "v=spf1 include:amazonses.com ~all"
+  type    = "TXT"
+  ttl     = 1
+  comment = "Resend"
 }
