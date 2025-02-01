@@ -124,7 +124,7 @@ resource "aws_ecs_task_definition" "ferretdb" {
   container_definitions = jsonencode([
     {
       name      = "ferretdb"
-      image     = "ghcr.io/ferretdb/ferretdb-dev:main"
+      image     = "ghcr.io/ferretdb/ferretdb-dev:1.24.0"
       essential = true
       portMappings = [
         {
@@ -138,7 +138,11 @@ resource "aws_ecs_task_definition" "ferretdb" {
         {
           name  = "FERRETDB_HANDLER"
           value = "sqlite"
-        }
+        },
+        # {
+        #   name = "FERRETDB_AUTH"
+        #   value = "false"
+        # }
       ]
       mountPoints = [
         {
@@ -222,13 +226,6 @@ resource "aws_route_table_association" "gearbox-route-table-association" {
   route_table_id = aws_route_table.gearbox-route-table.id
 }
 
-resource "aws_lb_target_group" "gearbox-instances" {
-  name     = "gearbox-instances"
-  port     = 80
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.gearbox-vpc.id
-}
-
 data "aws_iam_role" "s3-access-role" {
   name = "s3-full-access-role"
 }
@@ -302,8 +299,19 @@ resource "aws_ecs_service" "gearbox" {
     enable   = true
     rollback = true
   }
+  load_balancer {
+    target_group_arn = aws_lb_target_group.gearbox-instances.arn
+    container_name = jsondecode(aws_ecs_task_definition.gearbox.container_definitions)[0].name
+    container_port = 80
+  }
 }
 
+resource "aws_lb_target_group" "gearbox-instances" {
+  name     = "gearbox-instances"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.gearbox-vpc.id
+}
 resource "aws_lb" "gearbox-load-balancer" {
   name               = "gearbox"
   internal           = false
