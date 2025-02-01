@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5"
+    }
   }
 
   required_version = ">= 1.10.0"
@@ -358,4 +362,29 @@ resource "aws_lb_listener" "gearbox-https-listener" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.gearbox-instances.arn
   }
+}
+
+// Cloudflare
+
+# provider "cloudflare" {
+#   email   = "gearbox@decaturrobotics.org"
+#   api_token = 
+# }
+
+variable "cloudflare-zone-id" {
+  type = string
+  default = "3718e115b8e70b897b4ca5c52241f0a1"
+}
+
+data "cloudflare_zone" "dns-zone" {
+  zone_id = var.cloudflare-zone-id
+} 
+
+resource "cloudflare_dns_record" "dns-record" {
+  zone_id = var.cloudflare-zone-id
+  name    = "testing"
+  content = aws_lb.gearbox-load-balancer.dns_name
+  type    = "CNAME"
+  ttl     = 1
+  proxied = true
 }
