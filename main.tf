@@ -55,25 +55,6 @@ resource "aws_security_group_rule" "gearbox-allow-http-ingress" {
   cidr_blocks       = ["0.0.0.0/0"]
 }
 
-resource "aws_security_group_rule" "ferret-allow-mongo-ingress" {
-  type              = "ingress"
-  from_port         = 27017
-  to_port           = 27017
-  protocol          = "tcp"
-  security_group_id = aws_security_group.gearbox-security-group.id
-  cidr_blocks       = [aws_vpc.gearbox-vpc.cidr_block]
-}
-
-// For the EFS mount target
-resource "aws_security_group_rule" "ferret-allow-efs-ingress" {
-  type              = "ingress"
-  from_port         = 2049
-  to_port           = 2049
-  protocol          = "-1"
-  security_group_id = aws_security_group.gearbox-security-group.id
-  cidr_blocks       = ["0.0.0.0/0"]
-}
-
 resource "aws_security_group_rule" "gearbox-allow-all-egress" {
   type              = "egress"
   from_port         = 0
@@ -88,119 +69,6 @@ resource "aws_security_group" "gearbox-security-group" {
   vpc_id = aws_vpc.gearbox-vpc.id
 }
 
-// Ferret Database
-
-resource "aws_efs_file_system" "ferret-datastore" {
-  creation_token = "ferret-datastore"
-  tags = {
-    name = "ferret-datastore"
-  }
-}
-
-resource "aws_efs_backup_policy" "ferret-datastore-backup-policy" {
-  file_system_id = aws_efs_file_system.ferret-datastore.id
-  backup_policy {
-    status = "ENABLED"
-  }
-}
-
-resource "aws_efs_mount_target" "ferret-datastore-mount-target" {
-  file_system_id  = aws_efs_file_system.ferret-datastore.id
-  subnet_id       = aws_subnet.gearbox-subnets[0].id
-  security_groups = [aws_security_group.gearbox-security-group.id]
-}
-
-resource "aws_cloudwatch_log_stream" "ferret-log-stream" {
-  name           = "ferret-log-stream"
-  log_group_name = aws_cloudwatch_log_group.gearbox-logs.name
-}
-
-resource "aws_ecs_task_definition" "ferretdb" {
-  requires_compatibilities = ["FARGATE"]
-  family                   = "ferretdb"
-  network_mode             = "awsvpc"
-  execution_role_arn       = data.aws_iam_role.ecs_task_execution_role.arn
-  cpu                      = 512
-  memory                   = 1024
-  runtime_platform {
-    operating_system_family = "LINUX"
-    cpu_architecture        = "X86_64"
-  }
-  volume {
-    name = aws_efs_file_system.ferret-datastore.creation_token
-    efs_volume_configuration {
-      file_system_id = aws_efs_file_system.ferret-datastore.id
-    }
-  }
-  container_definitions = jsonencode([
-    {
-      name      = "ferretdb"
-      image     = "ghcr.io/ferretdb/ferretdb-dev:1.24.0" // Later versions give authentication errors
-      essential = true
-      portMappings = [
-        {
-          name          = "mongo"
-          containerPort = 27017
-          hostPort      = 27017
-          protocol      = "tcp"
-        }
-      ]
-      environment = [
-        {
-          name  = "FERRETDB_HANDLER"
-          value = "sqlite"
-        },
-        # {
-        #   name = "FERRETDB_AUTH"
-        #   value = "false"
-        # }
-      ]
-      mountPoints = [
-        {
-          sourceVolume  = aws_efs_file_system.ferret-datastore.creation_token
-          containerPath = "/state"
-          readOnly      = false
-        }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.gearbox-logs.name
-          "awslogs-region"        = var.region
-          "awslogs-stream-prefix" = aws_cloudwatch_log_stream.ferret-log-stream.name
-        }
-      }
-    }
-  ])
-}
-
-resource "aws_ecs_service" "ferret" {
-  name            = "ferret"
-  cluster         = aws_ecs_cluster.gearbox.id
-  task_definition = aws_ecs_task_definition.ferretdb.arn
-  desired_count   = 1
-  launch_type     = "FARGATE"
-  service_connect_configuration {
-    enabled   = true
-    namespace = aws_service_discovery_http_namespace.gearbox-namespace.arn
-    service {
-      client_alias {
-        port = 27017
-      }
-      port_name = jsondecode(aws_ecs_task_definition.ferretdb.container_definitions)[0].portMappings[0].name
-    }
-  }
-  network_configuration {
-    subnets          = [aws_subnet.gearbox-subnets[0].id]
-    security_groups  = [aws_security_group.gearbox-security-group.id]
-    assign_public_ip = true
-  }
-  deployment_circuit_breaker {
-    enable   = true
-    rollback = true
-  }
-}
-
 // Gearbox Servers
 
 variable "gearbox-subnet-availability-zones" {
@@ -211,7 +79,7 @@ variable "gearbox-subnet-availability-zones" {
 resource "aws_subnet" "gearbox-subnets" {
   count             = length(var.gearbox-subnet-availability-zones)
   vpc_id            = aws_vpc.gearbox-vpc.id
-  cidr_block        = "40.26.${(count.index + 1) * 16}.0/20"
+  cidr_block        = "40.26.${count.index * 16}.0/20"
   availability_zone = var.gearbox-subnet-availability-zones[count.index]
 }
 
@@ -297,10 +165,6 @@ resource "aws_ecs_service" "gearbox" {
   task_definition = aws_ecs_task_definition.gearbox.arn
   desired_count   = 1
   launch_type     = "FARGATE"
-  service_connect_configuration {
-    enabled   = true
-    namespace = aws_service_discovery_http_namespace.gearbox-namespace.arn
-  }
   network_configuration {
     subnets          = aws_subnet.gearbox-subnets[*].id
     security_groups  = [aws_security_group.gearbox-security-group.id]
@@ -318,7 +182,7 @@ resource "aws_ecs_service" "gearbox" {
 }
 
 resource "aws_appautoscaling_target" "ecs_target" {
-  max_capacity       = 5
+  max_capacity       = 3
   min_capacity       = 1
   resource_id        = "service/${aws_ecs_cluster.gearbox.name}/${aws_ecs_service.gearbox.name}"
   scalable_dimension = "ecs:service:DesiredCount"
