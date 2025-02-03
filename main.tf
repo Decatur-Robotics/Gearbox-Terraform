@@ -23,7 +23,7 @@ provider "aws" {
 }
 
 data "aws_iam_role" "ecs_task_execution_role" {
-  name = "ecsTaskExecutionRole"
+  name = "ecs-task-execution-role"
 }
 
 resource "aws_ecs_cluster" "gearbox" {
@@ -143,7 +143,7 @@ resource "aws_ecs_task_definition" "gearbox" {
       ]
       environmentFiles = [
         {
-          value = "arn:aws:s3:::4026-gearbox-test-envs/.env"
+          value = "arn:aws:s3:::4026-gearbox-envs/.env"
           type  = "s3"
         }
       ]
@@ -280,7 +280,8 @@ resource "cloudflare_dns_record" "domain-ownership-validation-record" {
 }
 
 resource "aws_acm_certificate" "gearbox-certificate" {
-  domain_name       = "*.4026.org"
+  domain_name       = "4026.org"
+  subject_alternative_names = ["*.4026.org"]
   validation_method = "DNS"
   lifecycle {
     create_before_destroy = true
@@ -293,9 +294,9 @@ resource "aws_acm_certificate_validation" "gearbox-certificate-validation" {
   certificate_arn = aws_acm_certificate.gearbox-certificate.arn
 }
 
-resource "cloudflare_dns_record" "testing-cname" {
+resource "cloudflare_dns_record" "root-cname" {
   zone_id = var.cloudflare-zone-id
-  name    = "testing"
+  name    = "4026.org"
   content = aws_lb.gearbox-load-balancer.dns_name
   type    = "CNAME"
   ttl     = 1
