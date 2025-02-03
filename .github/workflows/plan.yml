@@ -16,6 +16,6 @@ jobs:
       uses: blinqas/tf-plan-pr-comment@v1
       with:
         output_file: '${{ github.workspace }}/plan_output.txt'
-        headline: Terraform Plan"
+        headline: "Terraform Plan"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
