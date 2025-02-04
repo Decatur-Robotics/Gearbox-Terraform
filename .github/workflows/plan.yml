@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Terraform Plan
-        uses: dflook/terraform-plan@v1.46.1
+        uses: dflook/terraform-plan@a6967bcc161f0df654b5df2f1f00eca83a4cbad9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

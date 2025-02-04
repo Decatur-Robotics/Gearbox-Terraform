@@ -12,4 +12,4 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: terraform-validate
-        uses: dflook/terraform-validate@v1.46.1
+        uses: dflook/terraform-validate@5e22e449923d40905db0b3ca67ebc5787e8b2dee
