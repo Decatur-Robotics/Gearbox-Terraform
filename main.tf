@@ -315,7 +315,7 @@ resource "cloudflare_dns_record" "www-cname" {
 resource "cloudflare_dns_record" "status-cname" {
   zone_id = var.cloudflare-zone-id
   name    = "status"
-  content = aws_lb.gearbox-load-balancer.dns_name
+  content = "app.pulsetic.com"
   type    = "CNAME"
   ttl     = 1
 }
