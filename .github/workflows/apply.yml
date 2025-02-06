@@ -14,6 +14,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - uses: actions/checkout@v2
       - name: Terraform Apply
         uses: dflook/terraform-apply@61432ffb5b94226bdfc9cd68a1702a2c40e0db8b
@@ -22,3 +25,17 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+          name: Increment Version
+
+      - name: Set name
+        run: git config user.name "Gearbox Bot"
+
+      - name: Set email
+        run: git config user.email "gearbox@decaturrobotics.org"
+
+      - name: Push changes
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GIT_PUSH_TOKEN }}
+          branch: ${{ github.head_ref }}
