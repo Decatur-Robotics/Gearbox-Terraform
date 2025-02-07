@@ -9,6 +9,7 @@ on:
 jobs:
   terraform-validate:
     runs-on: ubuntu-latest
+    name: "Terraform Validate"
     steps:
       - uses: actions/checkout@v2
       - name: terraform-validate
